@@ -72,11 +72,11 @@ naver-keyword-tracker/
 
 ## 개발 계획
 
-### Step 1 — 프로젝트 세팅
+### Step 1 — 프로젝트 세팅 (완료 2026-04-06)
 
-- [ ] Plasmo 프로젝트 생성 (`pnpm create plasmo --with-tailwindcss`)
-- [ ] TypeScript + Tailwind CSS 설정
-- [ ] 기본 popup / options / background 파일 구성
+- [x] Plasmo + React + TypeScript + Tailwind CSS 구성
+- [x] 팝업 기본 UI (빈 상품 목록 + 하단 네비게이션)
+- [x] 아이콘 생성, 빌드 확인, 크롬 로드 테스트 완료
 
 ### Step 2 — 설정 페이지 (options.tsx)
 
