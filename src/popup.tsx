@@ -8,7 +8,7 @@ import {
   ResponsiveContainer
 } from "recharts"
 
-import { getConfig, getProducts, saveProducts } from "~/lib/storage"
+import { getConfig, getProducts, saveProducts, loadData } from "~/lib/storage"
 import type { Product, Keyword } from "~/lib/types"
 
 import "./style.css"
@@ -42,11 +42,17 @@ function Popup() {
   // 차트 표시
   const [chartKeyword, setChartKeyword] = useState<Keyword | null>(null)
 
+  // 자동 조회
+  const [autoCheck, setAutoCheck] = useState(false)
+
   useEffect(() => {
-    getProducts().then((p) => {
-      setProducts(p)
+    loadData().then((data) => {
+      setProducts(data.products)
+      setAutoCheck(!!data.autoCheck)
       setLoading(false)
     })
+    // 뱃지 초기화 (팝업 열면)
+    chrome.runtime.sendMessage({ type: "CLEAR_BADGE" })
   }, [])
 
   const persist = async (updated: Product[]) => {
@@ -580,6 +586,116 @@ function Popup() {
     </div>
   )
 
+  const handleToggleAutoCheck = async () => {
+    const newValue = !autoCheck
+    setAutoCheck(newValue)
+    await chrome.runtime.sendMessage({
+      type: "SET_AUTO_CHECK",
+      payload: { enabled: newValue }
+    })
+  }
+
+  const handleExport = async () => {
+    const result = await chrome.runtime.sendMessage({ type: "EXPORT_DATA" })
+    if (!result.ok) return
+    const blob = new Blob([JSON.stringify(result.data, null, 2)], {
+      type: "application/json"
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `nkt-backup-${new Date().toISOString().split("T")[0]}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleImport = () => {
+    const input = document.createElement("input")
+    input.type = "file"
+    input.accept = ".json"
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+      try {
+        const text = await file.text()
+        const data = JSON.parse(text)
+        if (!data.products || !Array.isArray(data.products)) {
+          alert("올바른 백업 파일이 아닙니다.")
+          return
+        }
+        await chrome.runtime.sendMessage({ type: "IMPORT_DATA", payload: data })
+        // 데이터 새로고침
+        const fresh = await loadData()
+        setProducts(fresh.products)
+        setAutoCheck(!!fresh.autoCheck)
+        alert("데이터를 성공적으로 가져왔습니다.")
+      } catch {
+        alert("파일을 읽을 수 없습니다.")
+      }
+    }
+    input.click()
+  }
+
+  const renderSettingsTab = () => (
+    <div className="flex-1 overflow-y-auto space-y-4">
+      {/* API 설정 */}
+      <button
+        onClick={() => chrome.runtime.openOptionsPage()}
+        className="w-full rounded-lg border border-gray-200 px-4 py-3 text-left transition-colors hover:bg-gray-50">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-900">API 설정</p>
+            <p className="text-xs text-gray-400">네이버 API 키, 스토어명 설정</p>
+          </div>
+          <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </button>
+
+      {/* 자동 순위 조회 */}
+      <div className="rounded-lg border border-gray-200 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-900">매일 자동 순위 조회</p>
+            <p className="text-xs text-gray-400">하루 1회 자동으로 순위를 조회합니다</p>
+          </div>
+          <button
+            onClick={handleToggleAutoCheck}
+            className={`relative h-6 w-11 rounded-full transition-colors ${
+              autoCheck ? "bg-green-500" : "bg-gray-300"
+            }`}>
+            <span
+              className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                autoCheck ? "translate-x-5" : ""
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* 데이터 관리 */}
+      <div className="rounded-lg border border-gray-200 px-4 py-3 space-y-3">
+        <p className="text-sm font-medium text-gray-900">데이터 관리</p>
+        <div className="flex gap-2">
+          <button
+            onClick={handleExport}
+            className="flex-1 rounded-lg bg-gray-100 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200">
+            내보내기
+          </button>
+          <button
+            onClick={handleImport}
+            className="flex-1 rounded-lg bg-gray-100 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200">
+            가져오기
+          </button>
+        </div>
+        <p className="text-xs text-gray-400">
+          상품, 키워드, 순위 기록을 JSON 파일로 백업하거나 복원합니다.
+        </p>
+      </div>
+    </div>
+  )
+
   const tabClass = (t: Tab) =>
     `flex flex-col items-center gap-1 ${tab === t ? "text-green-600" : "text-gray-400 hover:text-gray-600"}`
 
@@ -602,6 +718,7 @@ function Popup() {
       {/* 탭 콘텐츠 */}
       {tab === "rank" && renderRankTab()}
       {tab === "product" && renderProductTab()}
+      {tab === "settings" && renderSettingsTab()}
 
       {/* 하단 네비게이션 */}
       <nav className="flex justify-around border-t pt-3 mt-3">
@@ -639,7 +756,7 @@ function Popup() {
         </button>
         <button
           className={tabClass("settings")}
-          onClick={() => chrome.runtime.openOptionsPage()}>
+          onClick={() => setTab("settings")}>
           <svg
             className="w-5 h-5"
             fill="none"

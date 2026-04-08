@@ -33,4 +33,5 @@ export type RankEntry = {
 export type StorageData = {
   config: NaverApiConfig | null
   products: Product[]
+  autoCheck?: boolean
 }

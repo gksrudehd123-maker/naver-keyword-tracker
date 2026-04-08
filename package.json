@@ -26,10 +26,12 @@
   },
   "manifest": {
     "permissions": [
-      "storage"
+      "storage",
+      "alarms"
     ],
     "host_permissions": [
-      "https://openapi.naver.com/*"
+      "https://openapi.naver.com/*",
+      "https://search.shopping.naver.com/*"
     ]
   }
 }
